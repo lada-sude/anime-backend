@@ -1,9 +1,13 @@
-export interface User {
+export type User = {
     id: string;
     username: string;
-    passwordHash: string;
-    plan: 'free' | 'paid';
+    password: string;
+    plan: "free" | "premium";
     quota: number;
-}
-export declare const users: User[];
+    lastReset: string;
+};
+export declare let users: User[];
+export declare function saveUsers(): void;
+export declare function createUser(username: string, password: string): User;
+export declare function resetDailyQuota(): void;
 //# sourceMappingURL=user.d.ts.map

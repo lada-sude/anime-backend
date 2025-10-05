@@ -12,16 +12,23 @@ export type User = {
   lastReset: string; // always a string, never undefined
 };
 
-const usersFile = path.join(__dirname, "../data/users.json");
+// ✅ Ensure data directory and users.json exist (for Render compatibility)
+const dataDir = path.join(__dirname, "../data");
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
 
-// ✅ Load existing users from file if it exists
+const usersFile = path.join(dataDir, "users.json");
+if (!fs.existsSync(usersFile)) {
+  fs.writeFileSync(usersFile, "[]", "utf-8");
+}
+
+// ✅ Load existing users
 export let users: User[] = [];
 try {
-  if (fs.existsSync(usersFile)) {
-    const data = fs.readFileSync(usersFile, "utf-8");
-    users = JSON.parse(data);
-    console.log(`Loaded ${users.length} users from JSON`);
-  }
+  const data = fs.readFileSync(usersFile, "utf-8");
+  users = JSON.parse(data);
+  console.log(`Loaded ${users.length} users from JSON`);
 } catch (err) {
   console.error("Failed to load users.json:", err);
   users = [];
@@ -44,7 +51,7 @@ export function createUser(username: string, password: string): User {
     username,
     password: hashed,
     plan: "free",
-    quota: 5, // ⬅️ now 5 free searches/day
+    quota: 5, // 5 free searches/day
     lastReset: new Date().toISOString(),
   };
   users.push(user);
@@ -59,7 +66,7 @@ export function resetDailyQuota() {
   users.forEach((u) => {
     const last = new Date(u.lastReset).toDateString();
     if (u.plan === "free" && last !== today) {
-      u.quota = 5; // ⬅️ reset to 5 daily
+      u.quota = 5; // reset to 5 daily
       u.lastReset = new Date().toISOString();
     }
   });
