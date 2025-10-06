@@ -7,7 +7,8 @@ const router = express.Router();
  * ✅ GET all users (Admin only)
  */
 router.get("/users", (req, res) => {
-  res.json(users);
+  console.log("📡 Admin requested user list. Total users:", users.length);
+  res.json({ users }); // ✅ Wrap in object so frontend sees { users: [...] }
 });
 
 /**
@@ -30,6 +31,7 @@ router.post("/upgrade/:id", (req, res) => {
   }
 
   saveUsers();
+  console.log(`✅ Upgraded user: ${user.username} (Plan: ${user.plan}, Quota: ${user.quota})`);
   res.json({ message: "User updated successfully", user });
 });
 
@@ -47,6 +49,7 @@ router.post("/reset-all", (req, res) => {
   });
 
   saveUsers();
+  console.log("♻️  All free user quotas reset.");
   res.json({ message: "All free users’ quotas reset" });
 });
 
