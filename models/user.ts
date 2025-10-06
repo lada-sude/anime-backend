@@ -12,8 +12,10 @@ export type User = {
   lastReset: string; // always a string, never undefined
 };
 
-// ✅ Ensure data directory and users.json exist (for Render compatibility)
-const dataDir = path.join(__dirname, "../data");
+// ✅ Use project root (Render-safe)
+const dataDir = path.join(process.cwd(), "data");
+
+// ✅ Ensure data directory and users.json exist
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
