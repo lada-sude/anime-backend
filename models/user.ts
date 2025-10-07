@@ -10,26 +10,23 @@ export type User = {
   plan: "free" | "premium";
   quota: number;
   lastReset: string; // always a string, never undefined
+premiumExpires?: string | undefined; // ✅ explicitly allows setting to undefined
 };
 
-// ✅ Use project root (Render-safe)
 const dataDir = path.join(process.cwd(), "data");
 const backupFile = path.join(process.cwd(), "users-backup.json");
 
-// ✅ Ensure data directory exists
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
 const usersFile = path.join(dataDir, "users.json");
 
-// ✅ If main users.json is missing but a backup exists, restore it
 if (!fs.existsSync(usersFile) && fs.existsSync(backupFile)) {
   fs.copyFileSync(backupFile, usersFile);
   console.log("📦 Backup restored successfully from users-backup.json");
 }
 
-// ✅ Load existing users
 export let users: User[] = [];
 try {
   const data = fs.existsSync(usersFile) ? fs.readFileSync(usersFile, "utf-8") : "[]";
@@ -40,7 +37,6 @@ try {
   users = [];
 }
 
-// ✅ Save users to JSON file and backup file
 export function saveUsers() {
   try {
     fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
@@ -51,7 +47,6 @@ export function saveUsers() {
   }
 }
 
-// ✅ Create a new user
 export function createUser(username: string, password: string): User {
   const hashed = bcrypt.hashSync(password, 10);
   const user: User = {
@@ -59,7 +54,7 @@ export function createUser(username: string, password: string): User {
     username,
     password: hashed,
     plan: "free",
-    quota: 5, // 5 free searches/day
+    quota: 5,
     lastReset: new Date().toISOString(),
   };
   users.push(user);
@@ -67,14 +62,28 @@ export function createUser(username: string, password: string): User {
   return user;
 }
 
-// ✅ Reset daily quota (for free users)
+// ✅ Reset daily quota for all users and handle expired premium plans
 export function resetDailyQuota() {
   const today = new Date().toDateString();
 
   users.forEach((u) => {
     const last = new Date(u.lastReset).toDateString();
-    if (u.plan === "free" && last !== today) {
-      u.quota = 5; // reset to 5 daily
+
+    // ⏳ Check if premium expired
+    if (u.plan === "premium" && u.premiumExpires) {
+      const expiryDate = new Date(u.premiumExpires);
+      const now = new Date();
+      if (now > expiryDate) {
+        console.log(`⚠️ Premium expired for user: ${u.username}`);
+        u.plan = "free";
+        u.quota = 5;
+        u.premiumExpires = undefined;
+      }
+    }
+
+    // 🔁 Daily quota reset
+    if (last !== today) {
+      u.quota = u.plan === "premium" ? 20 : 5;
       u.lastReset = new Date().toISOString();
     }
   });
