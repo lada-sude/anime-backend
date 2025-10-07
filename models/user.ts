@@ -14,34 +14,40 @@ export type User = {
 
 // ✅ Use project root (Render-safe)
 const dataDir = path.join(process.cwd(), "data");
+const backupFile = path.join(process.cwd(), "users-backup.json");
 
-// ✅ Ensure data directory and users.json exist
+// ✅ Ensure data directory exists
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
 const usersFile = path.join(dataDir, "users.json");
-if (!fs.existsSync(usersFile)) {
-  fs.writeFileSync(usersFile, "[]", "utf-8");
+
+// ✅ If main users.json is missing but a backup exists, restore it
+if (!fs.existsSync(usersFile) && fs.existsSync(backupFile)) {
+  fs.copyFileSync(backupFile, usersFile);
+  console.log("📦 Backup restored successfully from users-backup.json");
 }
 
 // ✅ Load existing users
 export let users: User[] = [];
 try {
-  const data = fs.readFileSync(usersFile, "utf-8");
+  const data = fs.existsSync(usersFile) ? fs.readFileSync(usersFile, "utf-8") : "[]";
   users = JSON.parse(data);
-  console.log(`Loaded ${users.length} users from JSON`);
+  console.log(`✅ Loaded ${users.length} users from JSON`);
 } catch (err) {
-  console.error("Failed to load users.json:", err);
+  console.error("❌ Failed to load users.json:", err);
   users = [];
 }
 
-// ✅ Save users to JSON file
+// ✅ Save users to JSON file and backup file
 export function saveUsers() {
   try {
     fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+    fs.writeFileSync(backupFile, JSON.stringify(users, null, 2));
+    console.log("💾 Users saved and backed up.");
   } catch (err) {
-    console.error("Failed to save users.json:", err);
+    console.error("❌ Failed to save users.json:", err);
   }
 }
 
