@@ -1,92 +1,78 @@
-import fs from "fs";
-import path from "path";
-import { v4 as uuidv4 } from "uuid";
+// models/user.ts
+import mongoose, { Schema, Document } from "mongoose";
 import bcrypt from "bcryptjs";
+import { v4 as uuidv4 } from "uuid";
 
-export type User = {
+export interface IUser extends Document {
   id: string;
   username: string;
-  password: string; // hashed
+  password: string;
   plan: "free" | "premium";
   quota: number;
-  lastReset: string; // always a string, never undefined
-premiumExpires?: string | undefined; // ✅ explicitly allows setting to undefined
+  lastReset: string;
+  premiumExpires?: string;
+  comparePassword(password: string): Promise<boolean>;
+}
+
+const UserSchema = new Schema<IUser>({
+  id: { type: String, default: uuidv4 },
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  plan: { type: String, enum: ["free", "premium"], default: "free" },
+  quota: { type: Number, default: 5 },
+  lastReset: { type: String, default: () => new Date().toISOString() },
+  premiumExpires: { type: String, default: "" },
+});
+
+// ✅ Check password correctness
+UserSchema.methods.comparePassword = async function (password: string) {
+  return bcrypt.compare(password, this.password);
 };
 
-const dataDir = path.join(process.cwd(), "data");
-const backupFile = path.join(process.cwd(), "users-backup.json");
+// ✅ Auto-hash password before saving
+UserSchema.pre("save", async function (next) {
+  const user = this as IUser;
+  if (!user.isModified("password")) return next();
+  const salt = await bcrypt.genSalt(10);
+  user.password = await bcrypt.hash(user.password, salt);
+  next();
+});
 
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
+export const UserModel = mongoose.model<IUser>("User", UserSchema);
 
-const usersFile = path.join(dataDir, "users.json");
-
-if (!fs.existsSync(usersFile) && fs.existsSync(backupFile)) {
-  fs.copyFileSync(backupFile, usersFile);
-  console.log("📦 Backup restored successfully from users-backup.json");
-}
-
-export let users: User[] = [];
-try {
-  const data = fs.existsSync(usersFile) ? fs.readFileSync(usersFile, "utf-8") : "[]";
-  users = JSON.parse(data);
-  console.log(`✅ Loaded ${users.length} users from JSON`);
-} catch (err) {
-  console.error("❌ Failed to load users.json:", err);
-  users = [];
-}
-
-export function saveUsers() {
+// ✅ MongoDB-powered daily quota reset & premium expiry check
+export async function resetDailyQuota() {
   try {
-    fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
-    fs.writeFileSync(backupFile, JSON.stringify(users, null, 2));
-    console.log("💾 Users saved and backed up.");
-  } catch (err) {
-    console.error("❌ Failed to save users.json:", err);
-  }
-}
+    console.log("🧩 Running daily quota check...");
 
-export function createUser(username: string, password: string): User {
-  const hashed = bcrypt.hashSync(password, 10);
-  const user: User = {
-    id: uuidv4(),
-    username,
-    password: hashed,
-    plan: "free",
-    quota: 5,
-    lastReset: new Date().toISOString(),
-  };
-  users.push(user);
-  saveUsers();
-  return user;
-}
+    const users = await UserModel.find();
+    const today = new Date().toDateString();
 
-// ✅ Reset daily quota for all users and handle expired premium plans
-export function resetDailyQuota() {
-  const today = new Date().toDateString();
+    for (const user of users) {
+      const last = new Date(user.lastReset).toDateString();
 
-  users.forEach((u) => {
-    const last = new Date(u.lastReset).toDateString();
-
-    // ⏳ Check if premium expired
-    if (u.plan === "premium" && u.premiumExpires) {
-      const expiryDate = new Date(u.premiumExpires);
-      const now = new Date();
-      if (now > expiryDate) {
-        console.log(`⚠️ Premium expired for user: ${u.username}`);
-        u.plan = "free";
-        u.quota = 5;
-        u.premiumExpires = undefined;
+      // ⏳ Handle expired premium plans
+      if (user.plan === "premium" && user.premiumExpires) {
+        const expiryDate = new Date(user.premiumExpires);
+        if (new Date() > expiryDate) {
+          console.log(`⚠️ Premium expired for ${user.username}`);
+          user.plan = "free";
+          user.quota = 5;
+          user.premiumExpires = "";
+        }
       }
+
+      // 🔁 Reset quota if it's a new day
+      if (last !== today) {
+        user.quota = user.plan === "premium" ? 20 : 5;
+        user.lastReset = new Date().toISOString();
+      }
+
+      await user.save();
     }
 
-    // 🔁 Daily quota reset
-    if (last !== today) {
-      u.quota = u.plan === "premium" ? 20 : 5;
-      u.lastReset = new Date().toISOString();
-    }
-  });
-
-  saveUsers();
+    console.log("♻️ Daily quota check completed successfully.");
+  } catch (err) {
+    console.error("❌ Failed to reset daily quota:", err);
+  }
 }
