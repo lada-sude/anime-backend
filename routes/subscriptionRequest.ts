@@ -2,6 +2,7 @@ import express from "express";
 import { verifyToken } from "../utils/authMiddleware";
 import fs from "fs";
 import path from "path";
+import { UserModel } from "../models/user";
 
 const router = express.Router();
 
@@ -29,8 +30,8 @@ const saveRequests = (data: any) => {
   }
 };
 
-// 📥 User submits a payment confirmation
-router.post("/request", verifyToken, (req, res) => {
+// 📥 User submits payment confirmation
+router.post("/request", verifyToken, async (req, res) => {
   const { fullName, accountNumber, amount, note } = req.body;
   const username = (req as any).user.username;
 
@@ -63,31 +64,36 @@ router.get("/requests", (req, res) => {
 });
 
 // 👑 Admin: approve a request (adds searches)
-import { users } from "../models/user";
-router.post("/approve/:id", (req, res) => {
-  const { id } = req.params;
-  const requests = loadRequests();
-  const request = requests.find((r: any) => r.id === id);
+router.post("/approve/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requests = loadRequests();
+    const request = requests.find((r: any) => r.id === id);
 
-  if (!request) {
-    return res.status(404).json({ error: "Request not found" });
+    if (!request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    const user = await UserModel.findOne({ username: request.username });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // 💰 Add 20 searches per ₦1000
+    const amountNum = parseInt(request.amount.replace(/\D/g, ""), 10);
+    const addedQuota = Math.floor(amountNum / 1000) * 20;
+    user.quota += addedQuota;
+    await user.save();
+
+    request.status = "approved";
+    saveRequests(requests);
+
+    res.json({
+      message: `Approved ${request.username} (+${addedQuota} searches)`,
+      user,
+    });
+  } catch (err) {
+    console.error("Approve request error:", err);
+    res.status(500).json({ error: "Failed to approve request" });
   }
-
-  const user = users.find((u) => u.username === request.username);
-  if (!user) return res.status(404).json({ error: "User not found" });
-
-  // 💰 Add 20 searches per ₦1000
-  const amountNum = parseInt(request.amount.replace(/\D/g, ""), 10);
-  const addedQuota = Math.floor(amountNum / 1000) * 20;
-  user.quota += addedQuota;
-
-  request.status = "approved";
-  saveRequests(requests);
-
-  res.json({
-    message: `Approved ${request.username} (+${addedQuota} searches)`,
-    user,
-  });
 });
 
 export default router;

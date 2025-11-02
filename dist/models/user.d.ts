@@ -1,13 +1,18 @@
-export type User = {
+import mongoose, { Document } from "mongoose";
+export interface IUser extends Document {
     id: string;
     username: string;
     password: string;
     plan: "free" | "premium";
     quota: number;
     lastReset: string;
-};
-export declare let users: User[];
-export declare function saveUsers(): void;
-export declare function createUser(username: string, password: string): User;
-export declare function resetDailyQuota(): void;
+    premiumExpires?: string;
+    comparePassword(password: string): Promise<boolean>;
+}
+export declare const UserModel: mongoose.Model<IUser, {}, {}, {}, mongoose.Document<unknown, {}, IUser, {}, {}> & IUser & Required<{
+    _id: unknown;
+}> & {
+    __v: number;
+}, any>;
+export declare function resetDailyQuota(): Promise<void>;
 //# sourceMappingURL=user.d.ts.map

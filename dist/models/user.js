@@ -1,70 +1,99 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.users = void 0;
-exports.saveUsers = saveUsers;
-exports.createUser = createUser;
+exports.UserModel = void 0;
 exports.resetDailyQuota = resetDailyQuota;
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
-const uuid_1 = require("uuid");
+// models/user.ts
+const mongoose_1 = __importStar(require("mongoose"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
-// ✅ Ensure data directory and users.json exist (for Render compatibility)
-const dataDir = path_1.default.join(__dirname, "../data");
-if (!fs_1.default.existsSync(dataDir)) {
-    fs_1.default.mkdirSync(dataDir, { recursive: true });
-}
-const usersFile = path_1.default.join(dataDir, "users.json");
-if (!fs_1.default.existsSync(usersFile)) {
-    fs_1.default.writeFileSync(usersFile, "[]", "utf-8");
-}
-// ✅ Load existing users
-exports.users = [];
-try {
-    const data = fs_1.default.readFileSync(usersFile, "utf-8");
-    exports.users = JSON.parse(data);
-    console.log(`Loaded ${exports.users.length} users from JSON`);
-}
-catch (err) {
-    console.error("Failed to load users.json:", err);
-    exports.users = [];
-}
-// ✅ Save users to JSON file
-function saveUsers() {
+const uuid_1 = require("uuid");
+const UserSchema = new mongoose_1.Schema({
+    id: { type: String, default: uuid_1.v4 },
+    username: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    plan: { type: String, enum: ["free", "premium"], default: "free" },
+    quota: { type: Number, default: 5 },
+    lastReset: { type: String, default: () => new Date().toISOString() },
+    premiumExpires: { type: String, default: "" },
+});
+// ✅ Check password correctness
+UserSchema.methods.comparePassword = async function (password) {
+    return bcryptjs_1.default.compare(password, this.password);
+};
+// ✅ Auto-hash password before saving
+UserSchema.pre("save", async function (next) {
+    const user = this;
+    if (!user.isModified("password"))
+        return next();
+    const salt = await bcryptjs_1.default.genSalt(10);
+    user.password = await bcryptjs_1.default.hash(user.password, salt);
+    next();
+});
+exports.UserModel = mongoose_1.default.model("User", UserSchema);
+// ✅ MongoDB-powered daily quota reset & premium expiry check
+async function resetDailyQuota() {
     try {
-        fs_1.default.writeFileSync(usersFile, JSON.stringify(exports.users, null, 2));
+        console.log("🧩 Running daily quota check...");
+        const users = await exports.UserModel.find();
+        const today = new Date().toDateString();
+        for (const user of users) {
+            const last = new Date(user.lastReset).toDateString();
+            // ⏳ Handle expired premium plans
+            if (user.plan === "premium" && user.premiumExpires) {
+                const expiryDate = new Date(user.premiumExpires);
+                if (new Date() > expiryDate) {
+                    console.log(`⚠️ Premium expired for ${user.username}`);
+                    user.plan = "free";
+                    user.quota = 5;
+                    user.premiumExpires = "";
+                }
+            }
+            // 🔁 Reset quota if it's a new day
+            if (last !== today) {
+                user.quota = user.plan === "premium" ? 20 : 5;
+                user.lastReset = new Date().toISOString();
+            }
+            await user.save();
+        }
+        console.log("♻️ Daily quota check completed successfully.");
     }
     catch (err) {
-        console.error("Failed to save users.json:", err);
+        console.error("❌ Failed to reset daily quota:", err);
     }
-}
-// ✅ Create a new user
-function createUser(username, password) {
-    const hashed = bcryptjs_1.default.hashSync(password, 10);
-    const user = {
-        id: (0, uuid_1.v4)(),
-        username,
-        password: hashed,
-        plan: "free",
-        quota: 5, // 5 free searches/day
-        lastReset: new Date().toISOString(),
-    };
-    exports.users.push(user);
-    saveUsers();
-    return user;
-}
-// ✅ Reset daily quota (for free users)
-function resetDailyQuota() {
-    const today = new Date().toDateString();
-    exports.users.forEach((u) => {
-        const last = new Date(u.lastReset).toDateString();
-        if (u.plan === "free" && last !== today) {
-            u.quota = 5; // reset to 5 daily
-            u.lastReset = new Date().toISOString();
-        }
-    });
-    saveUsers();
 }
 //# sourceMappingURL=user.js.map
