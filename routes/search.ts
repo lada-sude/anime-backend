@@ -9,15 +9,17 @@ import FormData from "form-data";
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
-// ✅ IMAGE SEARCH (trace.moe)
+// ✅ IMAGE SEARCH
 router.post("/", verifyToken, upload.single("image"), async (req, res) => {
   try {
     const { deviceId } = req.body;
+    console.log("📱 Device ID received:", deviceId);
+
     if (!deviceId) {
       return res.status(400).json({ error: "Device ID missing" });
     }
 
-    // 🔍 Look up by deviceId instead of ObjectId
+    // 🔍 Find user by deviceId instead of user.id
     const user = await UserModel.findOne({ deviceId });
     if (!user) {
       return res.status(404).json({ error: "User not found for this device" });
@@ -43,6 +45,7 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
+    // ✅ Upload image to Trace.moe
     const form = new FormData();
     form.append("image", fs.createReadStream(req.file.path));
 
@@ -52,26 +55,29 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       { headers: form.getHeaders() }
     );
 
+    // ✅ Deduct one search from quota
     user.quota -= 1;
     await user.save();
+
+    // ✅ Remove temporary file safely
     fs.unlinkSync(req.file.path);
 
+    // ✅ Send clean JSON response
     return res.json({
       results: response.data.result,
       quota: user.quota,
       resetDate: user.lastReset,
     });
-
   } catch (err: any) {
-    console.error("Trace.moe error:", err.response?.data || err.message);
+    console.error("❌ Trace.moe search error:", err.response?.data || err.message);
+
     if (!res.headersSent) {
-      res.status(500).json({
+      return res.status(500).json({
         error: "Trace.moe search failed",
         details: err.response?.data || err.message,
       });
     }
   }
 });
-
 
 export default router;
