@@ -12,12 +12,16 @@ const upload = multer({ dest: "uploads/" });
 // ✅ IMAGE SEARCH (trace.moe)
 router.post("/", verifyToken, upload.single("image"), async (req, res) => {
   try {
-    const userId = (req as any).user.id;
-    const user = await UserModel.findOne({ id: userId }); // ✅ FIXED lookup
-    if (!user) return res.status(404).json({ error: "User not found" });
+    const { deviceId } = req.body;
+    if (!deviceId) {
+      return res.status(400).json({ error: "Device ID missing" });
+    }
 
-    // ...rest stays the same...
-
+    // 🔍 Look up by deviceId instead of ObjectId
+    const user = await UserModel.findOne({ deviceId });
+    if (!user) {
+      return res.status(404).json({ error: "User not found for this device" });
+    }
 
     // ✅ Reset quota daily
     const today = new Date().toISOString().split("T")[0];
@@ -39,46 +43,35 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    // ✅ Upload to trace.moe
     const form = new FormData();
     form.append("image", fs.createReadStream(req.file.path));
 
-    let response;
-    try {
-      response = await axios.post(
-        "https://api.trace.moe/search?anilistInfo&cutBorders",
-        form,
-        { headers: form.getHeaders() }
-      );
-    } catch (err: any) {
-      console.error("Trace.moe API failed:", err.response?.data || err.message);
-      throw new Error("trace_moe_failed");
-    }
+    const response = await axios.post(
+      "https://api.trace.moe/search?anilistInfo&cutBorders",
+      form,
+      { headers: form.getHeaders() }
+    );
 
-    // ✅ Deduct quota
     user.quota -= 1;
     await user.save();
+    fs.unlinkSync(req.file.path);
 
-    // ✅ Cleanup
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-
-    res.json({
-      success: true,
+    return res.json({
       results: response.data.result,
-      user: {
-        username: user.username,
-        plan: user.plan,
-        quota: user.quota,
-        lastReset: user.lastReset,
-      },
+      quota: user.quota,
+      resetDate: user.lastReset,
     });
+
   } catch (err: any) {
-    console.error("Search route error:", err.message);
-    res.status(500).json({
-      error: "Trace.moe search failed",
-      details: err.message,
-    });
+    console.error("Trace.moe error:", err.response?.data || err.message);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Trace.moe search failed",
+        details: err.response?.data || err.message,
+      });
+    }
   }
 });
+
 
 export default router;
