@@ -13,8 +13,11 @@ const upload = multer({ dest: "uploads/" });
 router.post("/", verifyToken, upload.single("image"), async (req, res) => {
   try {
     const userId = (req as any).user.id;
-    const user = await UserModel.findById(userId);
+    const user = await UserModel.findOne({ id: userId }); // ✅ FIXED lookup
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    // ...rest stays the same...
+
 
     // ✅ Reset quota daily
     const today = new Date().toISOString().split("T")[0];
