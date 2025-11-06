@@ -9,11 +9,11 @@ import FormData from "form-data";
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
-// ✅ IMAGE SEARCH
+// ✅ IMAGE SEARCH (trace.moe)
 router.post("/", verifyToken, upload.single("image"), async (req, res) => {
   try {
     const userId = (req as any).user.id;
-    const user = await UserModel.findOne({ id: userId });
+    const user = await UserModel.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
     // ✅ Reset quota daily
@@ -36,32 +36,44 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    // ✅ Upload image to Trace.moe
+    // ✅ Upload to trace.moe
     const form = new FormData();
     form.append("image", fs.createReadStream(req.file.path));
 
-    const response = await axios.post(
-      "https://api.trace.moe/search?anilistInfo&cutBorders",
-      form,
-      { headers: form.getHeaders() }
-    );
+    let response;
+    try {
+      response = await axios.post(
+        "https://api.trace.moe/search?anilistInfo&cutBorders",
+        form,
+        { headers: form.getHeaders() }
+      );
+    } catch (err: any) {
+      console.error("Trace.moe API failed:", err.response?.data || err.message);
+      throw new Error("trace_moe_failed");
+    }
 
     // ✅ Deduct quota
     user.quota -= 1;
     await user.save();
 
-    fs.unlinkSync(req.file.path); // delete temp file safely
+    // ✅ Cleanup
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
     res.json({
+      success: true,
       results: response.data.result,
-      quota: user.quota,
-      resetDate: user.lastReset,
+      user: {
+        username: user.username,
+        plan: user.plan,
+        quota: user.quota,
+        lastReset: user.lastReset,
+      },
     });
   } catch (err: any) {
-    console.error("Trace.moe error:", err.response?.data || err.message);
+    console.error("Search route error:", err.message);
     res.status(500).json({
       error: "Trace.moe search failed",
-      details: err.response?.data || err.message,
+      details: err.message,
     });
   }
 });
