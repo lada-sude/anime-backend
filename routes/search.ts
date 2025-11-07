@@ -12,15 +12,17 @@ const upload = multer({ dest: "uploads/" });
 // ✅ IMAGE SEARCH
 router.post("/", verifyToken, upload.single("image"), async (req, res) => {
   try {
-    // ✅ Get the deviceId directly from the user model (decoded token or user info)
-    const { deviceId } = (req as any).user;
-    if (!deviceId) {
-      return res.status(400).json({ error: "Missing deviceId in request." });
-    }
+    // ✅ Get the user ID from the decoded token
+    const userId = (req as any).user.id;
 
-    // ✅ Find user by deviceId instead of _id
-    const user = await UserModel.findOne({ deviceId });
-    if (!user) return res.status(404).json({ error: "User not found for this device" });
+    // ✅ Find user by either custom `id` (UUID) or Mongo `_id`
+    const user =
+      (await UserModel.findOne({ id: userId })) ||
+      (await UserModel.findById(userId));
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
     // ✅ Reset quota daily
     const today = new Date().toISOString().split("T")[0];
@@ -38,6 +40,7 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       });
     }
 
+    // ✅ Ensure file exists
     if (!req.file?.path) {
       return res.status(400).json({ error: "No file uploaded" });
     }
@@ -52,11 +55,11 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       { headers: form.getHeaders() }
     );
 
-    // ✅ Deduct quota
+    // ✅ Deduct quota for current user only
     user.quota -= 1;
     await user.save();
 
-    fs.unlinkSync(req.file.path); // delete temp file safely
+    fs.unlinkSync(req.file.path); // cleanup temp file
 
     res.json({
       results: response.data.result,
@@ -71,5 +74,6 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
     });
   }
 });
+
 
 export default router;
