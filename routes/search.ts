@@ -12,18 +12,15 @@ const upload = multer({ dest: "uploads/" });
 // ✅ IMAGE SEARCH
 router.post("/", verifyToken, upload.single("image"), async (req, res) => {
   try {
-    const { deviceId } = req.body;
-    console.log("📱 Device ID received:", deviceId);
-
+    // ✅ Get the deviceId directly from the user model (decoded token or user info)
+    const { deviceId } = (req as any).user;
     if (!deviceId) {
-      return res.status(400).json({ error: "Device ID missing" });
+      return res.status(400).json({ error: "Missing deviceId in request." });
     }
 
-    // 🔍 Find user by deviceId instead of user.id
+    // ✅ Find user by deviceId instead of _id
     const user = await UserModel.findOne({ deviceId });
-    if (!user) {
-      return res.status(404).json({ error: "User not found for this device" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found for this device" });
 
     // ✅ Reset quota daily
     const today = new Date().toISOString().split("T")[0];
@@ -55,28 +52,23 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       { headers: form.getHeaders() }
     );
 
-    // ✅ Deduct one search from quota
+    // ✅ Deduct quota
     user.quota -= 1;
     await user.save();
 
-    // ✅ Remove temporary file safely
-    fs.unlinkSync(req.file.path);
+    fs.unlinkSync(req.file.path); // delete temp file safely
 
-    // ✅ Send clean JSON response
-    return res.json({
+    res.json({
       results: response.data.result,
       quota: user.quota,
       resetDate: user.lastReset,
     });
   } catch (err: any) {
-    console.error("❌ Trace.moe search error:", err.response?.data || err.message);
-
-    if (!res.headersSent) {
-      return res.status(500).json({
-        error: "Trace.moe search failed",
-        details: err.response?.data || err.message,
-      });
-    }
+    console.error("Trace.moe error:", err.response?.data || err.message);
+    res.status(500).json({
+      error: "Trace.moe search failed",
+      details: err.response?.data || err.message,
+    });
   }
 });
 
