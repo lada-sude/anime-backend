@@ -19,15 +19,15 @@ router.get("/users", async (req, res) => {
 });
 
 /**
- * ✅ POST upgrade user plan
- * body: { plan?: "free" | "premium", setQuota?: number }
+ * ✅ POST upgrade user plan (UUID compatible)
  */
 router.post("/upgrade/:id", async (req, res) => {
   try {
     const userId = req.params.id;
     const { plan, setQuota } = req.body;
 
-    const user = await UserModel.findById(userId);
+    // 🔧 Support both Mongo _id and custom UUID id
+    const user = await UserModel.findOne({ $or: [{ _id: userId }, { id: userId }] });
     if (!user) return res.status(404).json({ error: "User not found" });
 
     if (plan === "premium") {
@@ -50,7 +50,7 @@ router.post("/upgrade/:id", async (req, res) => {
 
     res.json({
       success: true,
-      message: `Welcome back, ${user.username}! Plan: ${user.plan.toUpperCase()}`,
+      message: `${user.username} upgraded successfully!`,
       user,
     });
   } catch (err) {
@@ -60,7 +60,7 @@ router.post("/upgrade/:id", async (req, res) => {
 });
 
 /**
- * ✅ Manual reset for all users (handles expired premium plans)
+ * ✅ Reset all users (downgrade expired premium)
  */
 router.post("/reset-all", async (req, res) => {
   try {
@@ -69,8 +69,8 @@ router.post("/reset-all", async (req, res) => {
 
     for (const u of users) {
       if (u.plan === "premium" && u.premiumExpires) {
-        const expiryDate = new Date(u.premiumExpires);
-        if (now > expiryDate) {
+        const expiry = new Date(u.premiumExpires);
+        if (now > expiry) {
           u.plan = "free";
           u.quota = 5;
           u.premiumExpires = "";
@@ -96,7 +96,9 @@ router.post("/reset-all", async (req, res) => {
  */
 router.post("/reset-user/:id", async (req, res) => {
   try {
-    const user = await UserModel.findById(req.params.id);
+    const userId = req.params.id;
+
+    const user = await UserModel.findOne({ $or: [{ _id: userId }, { id: userId }] });
     if (!user) return res.status(404).json({ error: "User not found" });
 
     user.plan = "free";
@@ -119,6 +121,7 @@ router.post("/reset-user/:id", async (req, res) => {
 });
 
 export default router;
+
 
 
 // MONGODB_URI=mongodb+srv://vnnachi70_db_user:QDpskslbvDBcTqgw@cluster0.tmwirij.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
