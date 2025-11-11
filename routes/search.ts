@@ -1,30 +1,25 @@
+// routes/search.ts
 import express from "express";
 import multer from "multer";
 import { verifyToken } from "../utils/authMiddleware";
 import { UserModel } from "../models/user";
 import fs from "fs";
-import axios from "axios";
-import FormData from "form-data";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
-// ✅ IMAGE SEARCH
+/**
+ * ✅ Quota Check (no Trace.moe call)
+ * Frontend will handle the actual image search.
+ */
 router.post("/", verifyToken, upload.single("image"), async (req, res) => {
   try {
-    // ✅ Get the user ID from the decoded token
     const userId = (req as any).user.id;
+    const user = (await UserModel.findOne({ id: userId })) || (await UserModel.findById(userId));
 
-    // ✅ Find user by either custom `id` (UUID) or Mongo `_id`
-    const user =
-      (await UserModel.findOne({ id: userId })) ||
-      (await UserModel.findById(userId));
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // ✅ Reset quota daily
+    // Reset quota daily
     const today = new Date().toISOString().split("T")[0];
     if (!user.lastReset || user.lastReset.split("T")[0] !== today) {
       user.quota = user.plan === "premium" ? 20 : 5;
@@ -32,7 +27,6 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       await user.save();
     }
 
-    // ✅ Check quota before search
     if (user.quota <= 0) {
       return res.status(403).json({
         error: "quota_exceeded",
@@ -40,40 +34,20 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
       });
     }
 
-    // ✅ Ensure file exists
-    if (!req.file?.path) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    // ✅ Upload image to Trace.moe
-    const form = new FormData();
-    form.append("image", fs.createReadStream(req.file.path));
-
-    const response = await axios.post(
-      "https://api.trace.moe/search?anilistInfo&cutBorders",
-      form,
-      { headers: form.getHeaders() }
-    );
-
-    // ✅ Deduct quota for current user only
+    // ✅ Deduct quota here (only)
     user.quota -= 1;
     await user.save();
 
-    fs.unlinkSync(req.file.path); // cleanup temp file
-
+    fs.unlinkSync(req.file.path); // cleanup
     res.json({
-      results: response.data.result,
-      quota: user.quota,
-      resetDate: user.lastReset,
+      success: true,
+      quotaLeft: user.quota,
+      message: "Quota deducted. You may now call trace.moe directly.",
     });
-  } catch (err: any) {
-    console.error("Trace.moe error:", err.response?.data || err.message);
-    res.status(500).json({
-      error: "Trace.moe search failed",
-      details: err.response?.data || err.message,
-    });
+  } catch (err) {
+    console.error("Search quota error:", err);
+    res.status(500).json({ error: "Server error while deducting quota" });
   }
 });
-
 
 export default router;
