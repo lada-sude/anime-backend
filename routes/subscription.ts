@@ -59,6 +59,7 @@ router.post("/upgrade/:id", async (req, res) => {
   }
 });
 
+
 /**
  * ✅ Reset all users (downgrade expired premium)
  */
@@ -119,6 +120,31 @@ router.post("/reset-user/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to reset user" });
   }
 });
+
+router.post("/toggle-ads/:id", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const user = await UserModel.findOne({ $or: [{ _id: userId }, { id: userId }] });
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    user.adsDisabled = !user.adsDisabled; // toggle on/off
+    await user.save();
+
+    console.log(`🎛️ ${user.username} ads ${user.adsDisabled ? "disabled" : "enabled"}`);
+
+    res.json({
+      success: true,
+      message: `Ads ${user.adsDisabled ? "disabled" : "enabled"} for ${user.username}`,
+      adsDisabled: user.adsDisabled,
+    });
+  } catch (err) {
+    console.error("❌ Failed to toggle ads:", err);
+    res.status(500).json({ error: "Failed to toggle ads" });
+  }
+});
+
+
 
 export default router;
 

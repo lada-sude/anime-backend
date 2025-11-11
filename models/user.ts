@@ -12,6 +12,7 @@ export interface IUser extends Document {
   lastReset: string;
   premiumExpires?: string;
   deviceId: string; // ✅ now required
+  adsDisabled?: boolean; // ✅ NEW FIELD
   comparePassword(password: string): Promise<boolean>;
 }
 
@@ -24,6 +25,7 @@ const UserSchema = new Schema<IUser>({
   quota: { type: Number, default: 5 },
   lastReset: { type: String, default: () => new Date().toISOString() },
   premiumExpires: { type: String, default: "" },
+  adsDisabled: { type: Boolean, default: false }, // ✅ added default false
 });
 
 // ✅ Compare passwords
