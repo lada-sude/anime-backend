@@ -38,7 +38,11 @@ router.post("/", verifyToken, upload.single("image"), async (req, res) => {
     user.quota -= 1;
     await user.save();
 
-    fs.unlinkSync(req.file.path); // cleanup
+    // ✅ Safely delete uploaded file if it exists
+    if (req.file && req.file.path) {
+      fs.unlinkSync(req.file.path);
+    }
+
     res.json({
       success: true,
       quotaLeft: user.quota,
