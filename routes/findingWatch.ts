@@ -1,5 +1,5 @@
 import express from "express";
-import { FindingWatchModel } from "../models/FindingWatch";
+import { FindingWatchModel } from "../models/findingWatch";
 import { verifyToken } from "../utils/authMiddleware";
 import { requireAdmin } from "./adminHelpers";
 
