@@ -1,7 +1,6 @@
 import express from "express";
 import { MerchModel } from "../models/merch";
-import { verifyToken } from "../utils/authMiddleware";
-import { requireAdmin } from "./adminHelpers";
+import { verifyToken } from "../utils/authMiddleware"; // keep token verification
 
 const merchRouter = express.Router();
 
@@ -16,8 +15,8 @@ merchRouter.get("/", async (req, res) => {
   }
 });
 
-// Admin: create merch
-merchRouter.post("/", verifyToken, requireAdmin, async (req, res) => {
+// Authenticated: create merch (no admin check)
+merchRouter.post("/", verifyToken, async (req, res) => {
   try {
     const { title, image, price, rating, link, storeName } = req.body;
     if (!title || !image || !price || !link) {
@@ -32,11 +31,15 @@ merchRouter.post("/", verifyToken, requireAdmin, async (req, res) => {
   }
 });
 
-// Admin: update merch
-merchRouter.put("/:id", verifyToken, requireAdmin, async (req, res) => {
+// Authenticated: update merch
+merchRouter.put("/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await MerchModel.findOneAndUpdate({ $or: [{ id }, { _id: id }] }, req.body, { new: true });
+    const updated = await MerchModel.findOneAndUpdate(
+      { $or: [{ id }, { _id: id }] },
+      req.body,
+      { new: true }
+    );
     if (!updated) return res.status(404).json({ error: "Merch not found" });
     res.json({ success: true, merch: updated });
   } catch (err) {
@@ -45,8 +48,8 @@ merchRouter.put("/:id", verifyToken, requireAdmin, async (req, res) => {
   }
 });
 
-// Admin: delete merch
-merchRouter.delete("/:id", verifyToken, requireAdmin, async (req, res) => {
+// Authenticated: delete merch
+merchRouter.delete("/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const removed = await MerchModel.findOneAndDelete({ $or: [{ id }, { _id: id }] });
