@@ -1,9 +1,11 @@
+// routes/merch.ts
 import express from "express";
 import { MerchModel } from "../models/merch";
+import { verifyToken, requireAdmin } from "../utils/authMiddleware";
 
 const merchRouter = express.Router();
 
-// Get all merch
+// Get all merch (public)
 merchRouter.get("/", async (req, res) => {
   try {
     const items = await MerchModel.find().sort({ createdAt: -1 });
@@ -14,14 +16,14 @@ merchRouter.get("/", async (req, res) => {
   }
 });
 
-// Create new merch
-merchRouter.post("/", async (req, res) => {
+// Create new merch (admin only)
+merchRouter.post("/", verifyToken, requireAdmin, async (req, res) => {
   try {
-    const { title, image, price, rating, link, storeName } = req.body;
+    const { title, image, price, rating, link, storeName, findingWatch, suggestWatchLink } = req.body;
     if (!title || !image || !price || !link) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-    const merch = new MerchModel({ title, image, price, rating, link, storeName });
+    const merch = new MerchModel({ title, image, price, rating, link, storeName, findingWatch, suggestWatchLink });
     await merch.save();
     res.json({ success: true, merch });
   } catch (err) {
@@ -30,15 +32,11 @@ merchRouter.post("/", async (req, res) => {
   }
 });
 
-// Update merch
-merchRouter.put("/:id", async (req, res) => {
+// Update merch (admin only)
+merchRouter.put("/:id", verifyToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await MerchModel.findOneAndUpdate(
-      { id },
-      req.body,
-      { new: true }
-    );
+    const updated = await MerchModel.findOneAndUpdate({ id }, req.body, { new: true });
     if (!updated) return res.status(404).json({ error: "Merch not found" });
     res.json({ success: true, merch: updated });
   } catch (err) {
@@ -47,8 +45,8 @@ merchRouter.put("/:id", async (req, res) => {
   }
 });
 
-// Delete merch
-merchRouter.delete("/:id", async (req, res) => {
+// Delete merch (admin only)
+merchRouter.delete("/:id", verifyToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const removed = await MerchModel.findOneAndDelete({ id });

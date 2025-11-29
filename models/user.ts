@@ -1,4 +1,4 @@
-// models/user.ts
+//models/user.ts
 import mongoose, { Schema, Document } from "mongoose";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
@@ -11,8 +11,9 @@ export interface IUser extends Document {
   quota: number;
   lastReset: string;
   premiumExpires?: string;
-  deviceId: string; // ✅ now required
-  adsDisabled?: boolean; // ✅ NEW FIELD
+  deviceId: string;
+  adsDisabled?: boolean;
+  isAdmin: boolean; // ⭐ REQUIRED FIELD
   comparePassword(password: string): Promise<boolean>;
 }
 
@@ -20,20 +21,23 @@ const UserSchema = new Schema<IUser>({
   id: { type: String, default: uuidv4 },
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  deviceId: { type: String, unique: true, required: true }, // ✅ ensure unique per device
+  deviceId: { type: String, unique: true, required: true },
   plan: { type: String, enum: ["free", "premium"], default: "free" },
   quota: { type: Number, default: 5 },
   lastReset: { type: String, default: () => new Date().toISOString() },
   premiumExpires: { type: String, default: "" },
-  adsDisabled: { type: Boolean, default: false }, // ✅ added default false
+  adsDisabled: { type: Boolean, default: false },
+
+  // ⭐ VERY IMPORTANT
+  isAdmin: { type: Boolean, default: false },
 });
 
-// ✅ Compare passwords
+// Compare passwords
 UserSchema.methods.comparePassword = async function (password: string) {
   return bcrypt.compare(password, this.password);
 };
 
-// ✅ Hash password before saving
+// Hash password before saving
 UserSchema.pre("save", async function (next) {
   const user = this as IUser;
   if (!user.isModified("password")) return next();
@@ -44,7 +48,7 @@ UserSchema.pre("save", async function (next) {
 
 export const UserModel = mongoose.model<IUser>("User", UserSchema);
 
-// ✅ Daily quota reset and premium expiration
+// Daily quota reset and premium expiration
 export async function resetDailyQuota() {
   try {
     console.log("🧩 Running daily quota check...");
@@ -55,7 +59,7 @@ export async function resetDailyQuota() {
     for (const user of users) {
       const last = new Date(user.lastReset).toDateString();
 
-      // ⏳ Handle expired premium
+      // Premium expiration
       if (user.plan === "premium" && user.premiumExpires) {
         const expiryDate = new Date(user.premiumExpires);
         if (new Date() > expiryDate) {
@@ -66,7 +70,7 @@ export async function resetDailyQuota() {
         }
       }
 
-      // 🔁 Reset quota daily
+      // Reset quota
       if (last !== today) {
         user.quota = user.plan === "premium" ? 20 : 5;
         user.lastReset = new Date().toISOString();
