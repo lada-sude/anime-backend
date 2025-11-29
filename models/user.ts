@@ -13,7 +13,7 @@ export interface IUser extends Document {
   premiumExpires?: string;
   deviceId: string;
   adsDisabled?: boolean;
-  isAdmin: boolean; // ⭐ REQUIRED FIELD
+  isAdmin: boolean;
   comparePassword(password: string): Promise<boolean>;
 }
 
@@ -21,14 +21,16 @@ const UserSchema = new Schema<IUser>({
   id: { type: String, default: uuidv4 },
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  deviceId: { type: String, unique: true, required: true },
+
+  // 🔥 FIX: Old users automatically get "unknown"
+  deviceId: { type: String, unique: true, required: false, default: "unknown" },
+
   plan: { type: String, enum: ["free", "premium"], default: "free" },
   quota: { type: Number, default: 5 },
   lastReset: { type: String, default: () => new Date().toISOString() },
   premiumExpires: { type: String, default: "" },
   adsDisabled: { type: Boolean, default: false },
 
-  // ⭐ VERY IMPORTANT
   isAdmin: { type: Boolean, default: false },
 });
 
@@ -48,7 +50,7 @@ UserSchema.pre("save", async function (next) {
 
 export const UserModel = mongoose.model<IUser>("User", UserSchema);
 
-// Daily quota reset and premium expiration
+// Daily quota reset + premium expiration
 export async function resetDailyQuota() {
   try {
     console.log("🧩 Running daily quota check...");
@@ -57,6 +59,10 @@ export async function resetDailyQuota() {
     const today = new Date().toDateString();
 
     for (const user of users) {
+
+      // ⭐ FIX: If user has no deviceId, auto-fill
+      if (!user.deviceId) user.deviceId = "unknown";
+
       const last = new Date(user.lastReset).toDateString();
 
       // Premium expiration
